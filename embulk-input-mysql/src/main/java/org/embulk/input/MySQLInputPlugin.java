@@ -2,15 +2,19 @@ package org.embulk.input;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.util.Locale;
 import java.util.Properties;
 import java.sql.Connection;
 import java.sql.Driver;
 import java.sql.SQLException;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 import com.google.common.base.Throwables;
 import com.mysql.jdbc.TimeUtil;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
+import org.embulk.config.ConfigException;
 import org.embulk.input.jdbc.AbstractJdbcInputPlugin;
 import org.embulk.input.jdbc.getter.ColumnGetterFactory;
 import org.embulk.input.mysql.MySQLInputConnection;
@@ -40,8 +44,46 @@ public class MySQLInputPlugin
 
         @Config("database")
         public String getDatabase();
+
+        @Config("ssl")
+        @ConfigDefault("\"none\"")  // backward compatibility.
+        public UseSSL getSSL();
     }
 
+    public enum UseSSL {
+        NONE("none"),
+        VERIFY("verify"),
+        ENABLE("enable");
+
+        private String name;
+
+        UseSSL(String name){
+            this.name = name;
+        }
+
+        @JsonCreator
+        public static UseSSL fromString(String from){
+            for(UseSSL useSSL : UseSSL.values() ) {
+                if(useSSL.name.equals(from)) {
+                    return useSSL;
+                }
+            }
+            throw new ConfigException(String.format(Locale.ENGLISH,"Unknown ssl option '%s'. Supported ssl are [none, verify, enable]", from));
+        }
+
+        @JsonValue
+        @Override
+        public String toString()
+        {
+            return this.name;
+        }
+
+        public String getSSL()
+        {
+            return toString();
+        }
+
+    }
     @Override
     protected Class<? extends PluginTask> getTaskClass()
     {
@@ -73,21 +115,22 @@ public class MySQLInputPlugin
         // Socket options TCP_KEEPCNT, TCP_KEEPIDLE, and TCP_KEEPINTVL are not configurable.
         props.setProperty("tcpKeepAlive", "true");
 
-        // TODO
-        //switch task.getSssl() {
-        //when "disable":
-        //    break;
-        //when "enable":
-        //    props.setProperty("useSSL", "true");
-        //    props.setProperty("requireSSL", "false");
-        //    props.setProperty("verifyServerCertificate", "false");
-        //    break;
-        //when "verify":
-        //    props.setProperty("useSSL", "true");
-        //    props.setProperty("requireSSL", "true");
-        //    props.setProperty("verifyServerCertificate", "true");
-        //    break;
-        //}
+        UseSSL useSSL = t.getSSL();
+        if( useSSL == UseSSL.ENABLE ){
+            props.setProperty("useSSL", "true");
+            props.setProperty("requireSSL", "false");
+            props.setProperty("verifyServerCertificate", "false");
+
+        }
+        else if( useSSL == UseSSL.VERIFY ) {
+            props.setProperty("useSSL", "true");
+            props.setProperty("requireSSL", "true");
+            props.setProperty("verifyServerCertificate", "true");
+
+        }
+        else { // NONE
+            props.setProperty("useSSL", "false");
+        }
 
         if (t.getFetchRows() == 1) {
             logger.info("Fetch size is 1. Fetching rows one by one.");
