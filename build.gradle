@@ -173,9 +173,10 @@ subprojects {
         }
     }
 
-    task gemspec << {
-        file('build').mkdirs();
-        file('build/gemspec').write($/
+    task gemspec {
+        doLast {
+            file('build').mkdirs();
+            file('build/gemspec').write($/
 Gem::Specification.new do |spec|
   spec.name          = "${project.name}"
   spec.version       = "${project.version}"
@@ -191,15 +192,18 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 end
 /$)
+        }
     }
 }
 
-task gemPush << {
-    "gem push pkg/embulk-input-jdbc-${project.version}.gem".execute().waitFor()
-    "gem push pkg/embulk-input-mysql-${project.version}.gem".execute().waitFor()
-    "gem push pkg/embulk-input-postgresql-${project.version}.gem".execute().waitFor()
-    "gem push pkg/embulk-input-redshift-${project.version}.gem".execute().waitFor()
-    "gem push pkg/embulk-input-oracle-${project.version}.gem".execute().waitFor()
-    "gem push pkg/embulk-input-sqlserver-${project.version}.gem".execute().waitFor()
-    "gem push pkg/embulk-input-db2-${project.version}.gem".execute().waitFor()
+task gemPush {
+    doLast {
+        "gem push pkg/embulk-input-jdbc-${project.version}.gem".execute().waitFor()
+        "gem push pkg/embulk-input-mysql-${project.version}.gem".execute().waitFor()
+        "gem push pkg/embulk-input-postgresql-${project.version}.gem".execute().waitFor()
+        "gem push pkg/embulk-input-redshift-${project.version}.gem".execute().waitFor()
+        "gem push pkg/embulk-input-oracle-${project.version}.gem".execute().waitFor()
+        "gem push pkg/embulk-input-sqlserver-${project.version}.gem".execute().waitFor()
+        "gem push pkg/embulk-input-db2-${project.version}.gem".execute().waitFor()
+    }
 }
