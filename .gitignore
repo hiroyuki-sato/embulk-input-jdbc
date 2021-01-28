@@ -6,3 +6,6 @@ build/
 /out/
 ci/postgresql.yml
 embulk-input-oracle/driver/
+/*/classpath
+/pkg/
+/embulk-input-postgresql/default_jdbc_driver/
