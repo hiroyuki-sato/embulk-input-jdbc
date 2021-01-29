@@ -2,6 +2,7 @@ package org.embulk.input;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.sql.Driver;
 import java.util.Properties;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -67,6 +68,7 @@ public class MySQLInputPlugin
     @Override
     protected MySQLInputConnection newConnection(PluginTask task) throws SQLException
     {
+        Driver driver;
         MySQLPluginTask t = (MySQLPluginTask) task;
 
         loadDriver("com.mysql.jdbc.Driver", t.getDriverPath());
@@ -122,8 +124,9 @@ public class MySQLInputPlugin
         props.putAll(t.getOptions());
         logConnectionProperties(url, props);
 
+        driver = DriverManager.getDriver(url);
         // load timezone mappings
-        loadTimeZoneMappings();
+        loadTimeZoneMappings(driver.getMajorVersion());
 
         Connection con = DriverManager.getConnection(url, props);
         try {
@@ -143,8 +146,18 @@ public class MySQLInputPlugin
         return new MySQLColumnGetterFactory(pageBuilder, dateTimeZone);
     }
 
-    private void loadTimeZoneMappings()
+    private void loadTimeZoneMappings(int version)
     {
+        String timeUtilClassName;
+        String timeZonePropName;
+
+        if ( version < 8 ) {
+            timeUtilClassName = "com.mysql.jdbc.TimeUtil";
+            timeZonePropName = "/com/mysql/jdbc/TimeZoneMapping.properties";
+        } else {
+            timeUtilClassName = "com.mysql.cj.util.TimeUtil";
+            timeZonePropName = "/com/mysql/cj/util/TimeZoneMapping.properties";
+        }
         // Here initializes com.mysql.jdbc.TimeUtil.timeZoneMappings static field by calling
         // static timeZoneMappings method using reflection.
         // The field is usually initialized when Driver#connect method is called. But the field
@@ -155,9 +168,11 @@ public class MySQLInputPlugin
         // that loaded com.mysql.jdbc.TimeUtil class rather than system class loader to read the
         // property file because the file should be in the same classpath with the class.
         // Here implements a workaround as as workaround.
+
+
         Field f = null;
         try {
-            Class<?> timeUtilClass = Class.forName("com.mysql.jdbc.TimeUtil");
+            Class<?> timeUtilClass = Class.forName(timeUtilClassName);
             f = timeUtilClass.getDeclaredField("timeZoneMappings");
             f.setAccessible(true);
 
@@ -165,7 +180,7 @@ public class MySQLInputPlugin
             if (timeZoneMappings == null) {
                 timeZoneMappings = new Properties();
                 synchronized (timeUtilClass) {
-                    timeZoneMappings.load(this.getClass().getResourceAsStream("/com/mysql/jdbc/TimeZoneMapping.properties"));
+                    timeZoneMappings.load(this.getClass().getResourceAsStream(timeZonePropName));
                 }
                 f.set(null, timeZoneMappings);
             }
