@@ -40,9 +40,11 @@ public class MySQLColumnGetterFactory
             MySQLInputConnection mysqlInputConnection = (MySQLInputConnection) con;
             // Users cannot use DATETIME or TIMESTAMP typed columns as incremental_columns: if 'useLegacyDatetimeCode=true'.
             // That might be acceptable since mysql-connector-java v6.x will turn off, by default.
+/*
             if (mysqlInputConnection.getUseLegacyDatetimeCode()) {
                 throw new ConfigException("Must use 'useLegacyDatetimeCode=false' if 'DATETIME' or 'TIMESTAMP' typed columns are used as incremental_columns:");
             }
+*/
 
             TimeZone timeZone = mysqlInputConnection.getServerTimezoneTZ();
             final ZoneId sessionTimeZone = timeZone.toZoneId();

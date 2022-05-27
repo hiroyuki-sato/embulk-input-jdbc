@@ -110,7 +110,7 @@ public class MySQLInputPlugin
         }
 
         // NOTE:The useLegacyDatetimeCode option is obsolete in the MySQL Connector/J 6.
-        props.setProperty("useLegacyDatetimeCode", String.valueOf(t.getUseLegacyDatetimeCode()));
+        //props.setProperty("useLegacyDatetimeCode", String.valueOf(t.getUseLegacyDatetimeCode()));
 
         if (t.getFetchRows() == 1) {
             logger.info("Fetch size is 1. Fetching rows one by one.");
