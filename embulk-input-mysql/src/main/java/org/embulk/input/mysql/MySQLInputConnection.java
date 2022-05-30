@@ -56,7 +56,8 @@ public class MySQLInputConnection
     public boolean getUseLegacyDatetimeCode()
     {
         try {
-            Class<?> connectionPropertiesClass = Class.forName("com.mysql.jdbc.ConnectionProperties");
+            //Class<?> connectionPropertiesClass = Class.forName("com.mysql.jdbc.ConnectionProperties");
+            Class<?> connectionPropertiesClass = Class.forName("com.mysql.cj.jdbc.ConnectionImpl");
             Method getUseLegacyDatetimeCodeMethod = connectionPropertiesClass.getMethod("getUseLegacyDatetimeCode");
             return (Boolean)getUseLegacyDatetimeCodeMethod.invoke(connection);
 
@@ -68,7 +69,8 @@ public class MySQLInputConnection
     public TimeZone getServerTimezoneTZ()
     {
         try {
-            Class<?> connectionImplClass = Class.forName("com.mysql.jdbc.ConnectionImpl");
+            //Class<?> connectionImplClass = Class.forName("com.mysql.jdbc.ConnectionImpl");
+            Class<?> connectionImplClass = Class.forName("com.mysql.cj.jdbc.ConnectionImpl");
             Method getServerTimezoneTZMethod = connectionImplClass.getMethod("getServerTimezoneTZ");
             return (TimeZone)getServerTimezoneTZMethod.invoke(connection);
 
