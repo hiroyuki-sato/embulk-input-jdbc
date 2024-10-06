@@ -1,11 +1,16 @@
 package org.embulk.input.sqlserver;
 
+import java.io.File;
+import java.io.FileFilter;
 import java.sql.Connection;
 import java.sql.Driver;
+import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.time.ZoneId;
 import java.util.Properties;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+
 import javax.validation.constraints.Size;
 
 import org.embulk.config.ConfigException;
@@ -119,30 +124,19 @@ public class SQLServerInputPlugin
         SQLServerPluginTask sqlServerTask = (SQLServerPluginTask) task;
 
         Driver driver;
-        if (sqlServerTask.getDriverPath().isPresent()) {
-            addDriverJarToClasspath(sqlServerTask.getDriverPath().get());
+        try {
+            Class<? extends java.sql.Driver> driverClass = loadMssqlJdbcDriver(sqlServerTask);
+            driver = driverClass.newInstance();
+        }  catch (Exception e) {
+            throw new ConfigException("Can't load jTDS Driver from classpath", e);
         }
 
         boolean useJtdsDriver;
         if (sqlServerTask.getDriverType().equalsIgnoreCase("mssql-jdbc")) {
-            useJtdsDriver = false;
-            try {
-                driver = (Driver) Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver").newInstance();
-            }
-            catch (Exception e) {
-                throw new ConfigException("Can't load Microsoft SQLServerDriver from classpath", e);
-            }
-        }
-        else if (sqlServerTask.getDriverType().equalsIgnoreCase("jtds")) {
+            useJtdsDriver = isUseJtdsDriver();
+        } else if (sqlServerTask.getDriverType().equalsIgnoreCase("jtds")) {
             useJtdsDriver = true;
-            try {
-                driver = (Driver) Class.forName("net.sourceforge.jtds.jdbc.Driver").newInstance();
-            }
-            catch (Exception e) {
-                throw new ConfigException("Can't load jTDS Driver from classpath", e);
-            }
-        }
-        else {
+        } else {
             throw new ConfigException("Unknown driver_type : " + sqlServerTask.getDriverType());
         }
 
@@ -152,21 +146,25 @@ public class SQLServerInputPlugin
         props.putAll(sqlServerTask.getOptions());
         logConnectionProperties(urlAndProps.getUrl(), props);
 
-        if (driver != null) {
-            Connection con = driver.connect(urlAndProps.getUrl(), props);
-            try {
-                SQLServerInputConnection c = new SQLServerInputConnection(con, sqlServerTask.getSchema().orElse(null),
-                        sqlServerTask.getTransactionIsolationLevel().orElse(null));
-                con = null;
-                return c;
-            }
-            finally {
-                if (con != null) {
-                    con.close();
-                }
+        Connection con = DriverManager.getConnection(urlAndProps.getUrl(), urlAndProps.getProperties());
+        try {
+            SQLServerInputConnection c = new SQLServerInputConnection(con, sqlServerTask.getSchema().orElse(null),
+                    sqlServerTask.getTransactionIsolationLevel().orElse(null));
+            //con = null;
+            return c;
+        }
+        finally {
+            if (con != null) {
+                con.close();
             }
         }
-        throw new ConfigException("Fail to create new connection");
+    }
+
+    private static boolean isUseJtdsDriver()
+    {
+        boolean useJtdsDriver;
+        useJtdsDriver = false;
+        return useJtdsDriver;
     }
 
     @Override
@@ -287,4 +285,97 @@ public class SQLServerInputPlugin
 
         return new UrlAndProperties(url, props);
     }
+
+    private Class<? extends java.sql.Driver> loadMssqlJdbcDriver(SQLServerPluginTask task)
+    {
+        Class<? extends java.sql.Driver> found;
+
+        synchronized (mssqlJdbcDriver) {
+            if (mssqlJdbcDriver.get() != null) {
+                return mssqlJdbcDriver.get();
+            }
+
+            final String className;
+            if (task.getDriverType().equalsIgnoreCase("mssql-jdbc")) {
+                className = "com.microsoft.sqlserver.jdbc.SQLServerDriver";
+
+                try {
+                    // If the class is found from the ClassLoader of the plugin, that is prioritized the highest.
+                    found = loadJdbcDriverClassForName(className);
+                    mssqlJdbcDriver.compareAndSet(null, found);
+
+                    if (task.getDriverPath().isPresent()) {
+                        logger.warn(
+                                "\"driver_path\" is set while the MSSQL JDBC driver class \"{}\" is found from the PluginClassLoader."
+                                        + " \"driver_path\" is ignored.", className);
+                    }
+                    return found;
+                }
+                catch (final ClassNotFoundException ex) {
+                    // Pass-through once.
+                }
+
+                if (task.getDriverPath().isPresent()) {
+                    logger.info(
+                            "\"driver_path\" is set to load the MSSQL JDBC driver class \"{}\". Adding it to classpath.", className);
+                    addDriverJarToClasspath(task.getDriverPath().get());
+                }
+                else {
+                    final File root = this.findPluginRoot();
+                    final File driverLib = new File(root, "default_jdbc_driver");
+                    final File[] files = driverLib.listFiles(new FileFilter()
+                    {
+                        @Override
+                        public boolean accept(final File file)
+                        {
+                            return file.isFile() && file.getName().endsWith(".jar");
+                        }
+                    });
+                    if (files == null || files.length == 0) {
+                        throw new ConfigException(new ClassNotFoundException(
+                                "The Microsoft JDBC driver for the class \"" + className + "\" is not found"
+                                        + " in \"default_jdbc_driver\" (" + root.getAbsolutePath() + ")."));
+                    }
+                    for (final File file : files) {
+                        logger.info(
+                                "The Microsoft JDBC driver for the class \"{}\" is expected to be found"
+                                        + " in \"default_jdbc_driver\" at {}.", className, file.getAbsolutePath());
+                        this.addDriverJarToClasspath(file.getAbsolutePath());
+                    }
+                }
+
+                try {
+                    found = loadJdbcDriverClassForName(className);
+                }
+                catch (Exception e) {
+                    throw new ConfigException("Can't load Microsoft JDBC Driver from classpath", e);
+                }
+            }
+            else if (task.getDriverType().equalsIgnoreCase("jtds")) {
+                className = "net.sourceforge.jtds.jdbc.Driver";
+                try {
+                    found = loadJdbcDriverClassForName(className);
+                }
+                catch (Exception e) {
+                    throw new ConfigException("Can't load jTDS Driver from classpath", e);
+                }
+            }
+            else {
+                throw new ConfigException("Unknown driver_type : " + task.getDriverType());
+            }
+
+            // If the class is found from the ClassLoader of the plugin, that is prioritized the highest.
+            mssqlJdbcDriver.compareAndSet(null, found);
+            return found;
+        }
+
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Class<? extends java.sql.Driver> loadJdbcDriverClassForName(final String className) throws ClassNotFoundException
+    {
+        return (Class<? extends java.sql.Driver>) Class.forName(className);
+    }
+
+    private static final AtomicReference<Class<? extends Driver>> mssqlJdbcDriver = new AtomicReference<>();
 }
