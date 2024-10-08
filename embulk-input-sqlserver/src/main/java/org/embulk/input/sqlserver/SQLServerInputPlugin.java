@@ -133,7 +133,7 @@ public class SQLServerInputPlugin
 
         boolean useJtdsDriver;
         if (sqlServerTask.getDriverType().equalsIgnoreCase("mssql-jdbc")) {
-            useJtdsDriver = isUseJtdsDriver();
+            useJtdsDriver = false;
         } else if (sqlServerTask.getDriverType().equalsIgnoreCase("jtds")) {
             useJtdsDriver = true;
         } else {
@@ -150,7 +150,7 @@ public class SQLServerInputPlugin
         try {
             SQLServerInputConnection c = new SQLServerInputConnection(con, sqlServerTask.getSchema().orElse(null),
                     sqlServerTask.getTransactionIsolationLevel().orElse(null));
-            //con = null;
+            con = null;
             return c;
         }
         finally {
@@ -158,13 +158,6 @@ public class SQLServerInputPlugin
                 con.close();
             }
         }
-    }
-
-    private static boolean isUseJtdsDriver()
-    {
-        boolean useJtdsDriver;
-        useJtdsDriver = false;
-        return useJtdsDriver;
     }
 
     @Override
